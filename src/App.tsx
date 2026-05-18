@@ -189,19 +189,21 @@ export default function App() {
               <input
                 type="time"
                 value={settings.slotMinTime.slice(0, 5)}
-                onChange={(event) =>
-                  handleSettingsChange({ ...settings, slotMinTime: `${event.currentTarget.value}:00` })
-                }
+                onChange={(event) => {
+                  const slotMinTime = `${event.currentTarget.value}:00`;
+                  const slotMaxTime = toSlotMaxTime(slotMinTime, toTimeInputValue(settings.slotMaxTime));
+                  handleSettingsChange({ ...settings, slotMinTime, slotMaxTime });
+                }}
               />
             </label>
             <label>
               表示終了
               <input
                 type="time"
-                value={settings.slotMaxTime === '24:00:00' ? '23:59' : settings.slotMaxTime.slice(0, 5)}
+                value={toTimeInputValue(settings.slotMaxTime)}
                 onChange={(event) => {
-                  const value = event.currentTarget.value === '23:59' ? '24:00:00' : `${event.currentTarget.value}:00`;
-                  handleSettingsChange({ ...settings, slotMaxTime: value });
+                  const slotMaxTime = toSlotMaxTime(settings.slotMinTime, event.currentTarget.value);
+                  handleSettingsChange({ ...settings, slotMaxTime });
                 }}
               />
             </label>
@@ -323,6 +325,40 @@ function CalendarSelect(props: {
 
 function getResourceId(resource: DateSelectArg['resource']) {
   return (resource as { id?: string } | undefined)?.id;
+}
+
+function toTimeInputValue(duration: string) {
+  const minutes = parseDurationMinutes(duration) % 1440;
+  return formatClockTime(minutes);
+}
+
+function toSlotMaxTime(slotMinTime: string, endTimeValue: string) {
+  const startMinutes = parseDurationMinutes(slotMinTime) % 1440;
+  const endMinutes = parseClockMinutes(endTimeValue);
+  const durationMinutes = endMinutes <= startMinutes ? endMinutes + 1440 : endMinutes;
+  return formatDurationTime(durationMinutes);
+}
+
+function parseDurationMinutes(value: string) {
+  const [hours = '0', minutes = '0'] = value.split(':');
+  return Number(hours) * 60 + Number(minutes);
+}
+
+function parseClockMinutes(value: string) {
+  const [hours = '0', minutes = '0'] = value.split(':');
+  return Number(hours) * 60 + Number(minutes);
+}
+
+function formatClockTime(totalMinutes: number) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function formatDurationTime(totalMinutes: number) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
 }
 
 function formatSelectionRange(selection: PendingSelection) {
