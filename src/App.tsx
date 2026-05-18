@@ -58,10 +58,12 @@ export default function App() {
           listEvents(settings.plannedCalendarId, range.start, range.end),
           listEvents(settings.actualCalendarId, range.start, range.end),
         ]);
+        const plannedCalendar = calendars.find((calendar) => calendar.id === settings.plannedCalendarId);
+        const actualCalendar = calendars.find((calendar) => calendar.id === settings.actualCalendarId);
 
         setEvents([
-          ...plannedEvents.map((event) => toCalendarEvent(event, 'planned')),
-          ...actualEvents.map((event) => toCalendarEvent(event, 'actual')),
+          ...plannedEvents.map((event) => toCalendarEvent(event, 'planned', plannedCalendar)),
+          ...actualEvents.map((event) => toCalendarEvent(event, 'actual', actualCalendar)),
         ]);
       } catch (err) {
         setError(toErrorMessage(err));
@@ -69,7 +71,7 @@ export default function App() {
         setIsLoading(false);
       }
     },
-    [dateRange, settings.actualCalendarId, settings.plannedCalendarId],
+    [calendars, dateRange, settings.actualCalendarId, settings.plannedCalendarId],
   );
 
   const handleSignIn = async () => {

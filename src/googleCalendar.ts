@@ -12,6 +12,22 @@ const GOOGLE_AUTH_SCOPE = [
   'https://www.googleapis.com/auth/calendar.events',
 ].join(' ');
 
+const FALLBACK_EVENT_COLORS: Record<CalendarRole, Required<CalendarEventColors>> = {
+  planned: {
+    backgroundColor: '#2764b3',
+    foregroundColor: '#ffffff',
+  },
+  actual: {
+    backgroundColor: '#28815f',
+    foregroundColor: '#ffffff',
+  },
+};
+
+type CalendarEventColors = {
+  backgroundColor?: string;
+  foregroundColor?: string;
+};
+
 type TokenClient = {
   requestAccessToken: (options?: { prompt?: string }) => void;
   callback: (response: TokenResponse) => void;
@@ -139,8 +155,11 @@ export async function createActualEvent(calendarId: string, title: string, start
   );
 }
 
-export function toCalendarEvent(event: GoogleEvent, role: CalendarRole) {
+export function toCalendarEvent(event: GoogleEvent, role: CalendarRole, colors: CalendarEventColors = {}) {
   const isAllDay = Boolean(event.start.date);
+  const fallbackColors = FALLBACK_EVENT_COLORS[role];
+  const backgroundColor = colors.backgroundColor || fallbackColors.backgroundColor;
+  const foregroundColor = colors.foregroundColor || fallbackColors.foregroundColor;
 
   return {
     id: `${role}:${event.id}`,
@@ -149,6 +168,9 @@ export function toCalendarEvent(event: GoogleEvent, role: CalendarRole) {
     end: event.end.dateTime || event.end.date,
     allDay: isAllDay,
     resourceId: role,
+    backgroundColor,
+    borderColor: backgroundColor,
+    textColor: foregroundColor,
     editable: false,
     extendedProps: {
       role,

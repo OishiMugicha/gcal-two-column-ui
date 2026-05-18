@@ -209,16 +209,6 @@ select {
   font-size: 12px;
 }
 
-.fc .event-planned {
-  background: #2764b3;
-  border-color: #2764b3;
-}
-
-.fc .event-actual {
-  background: #28815f;
-  border-color: #28815f;
-}
-
 .modal-backdrop {
   align-items: center;
   background: rgba(23, 32, 38, 0.42);
