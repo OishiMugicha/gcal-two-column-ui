@@ -81,6 +81,11 @@ button.secondary {
   min-height: 0;
 }
 
+.calendar-only .main-layout {
+  display: block;
+  height: 100%;
+}
+
 .settings-panel {
   background: #ffffff;
   border-right: 1px solid #d9e1e4;
@@ -147,6 +152,19 @@ select {
   flex-direction: column;
   min-width: 0;
   padding: 16px;
+}
+
+.calendar-only .calendar-panel {
+  height: 100%;
+  padding: 8px;
+  position: relative;
+}
+
+.calendar-only-back {
+  position: fixed;
+  right: 18px;
+  top: 14px;
+  z-index: 5;
 }
 
 .status {

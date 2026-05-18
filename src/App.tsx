@@ -32,6 +32,7 @@ export default function App() {
   const [actualTitle, setActualTitle] = useState('');
   const [isSignedIn, setIsSignedIn] = useState(() => hasAccessToken());
   const [isLoading, setIsLoading] = useState(false);
+  const [isCalendarOnly, setIsCalendarOnly] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -152,84 +153,96 @@ export default function App() {
   };
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div>
-          <h1>予定・実績カレンダー</h1>
-          <p>Google Calendarの予定と実績を、週表示の各日2レーンで比較します。</p>
-        </div>
-        <div className="topbar-actions">
-          <button type="button" onClick={handleSignIn} disabled={isLoading}>
-            {isSignedIn ? '再ログイン' : 'Googleでログイン'}
-          </button>
-          <button type="button" onClick={() => void refreshEvents()} disabled={!canLoadEvents || isLoading}>
-            更新
-          </button>
-        </div>
-      </header>
+    <div className={`app-shell ${isCalendarOnly ? 'calendar-only' : ''}`}>
+      {!isCalendarOnly && (
+        <header className="topbar">
+          <div>
+            <h1>予定・実績カレンダー</h1>
+            <p>Google Calendarの予定と実績を、週表示の各日2レーンで比較します。</p>
+          </div>
+          <div className="topbar-actions">
+            <button type="button" onClick={handleSignIn} disabled={isLoading}>
+              {isSignedIn ? '再ログイン' : 'Googleでログイン'}
+            </button>
+            <button type="button" onClick={() => void refreshEvents()} disabled={!canLoadEvents || isLoading}>
+              更新
+            </button>
+            <button type="button" className="secondary" onClick={() => setIsCalendarOnly(true)}>
+              カレンダーだけ表示
+            </button>
+          </div>
+        </header>
+      )}
 
       <main className="main-layout">
-        <aside className="settings-panel">
-          <h2>設定</h2>
-          <CalendarSelect
-            label="予定カレンダー"
-            value={settings.plannedCalendarId}
-            calendars={calendars}
-            onChange={(plannedCalendarId) => handleSettingsChange({ ...settings, plannedCalendarId })}
-          />
-          <CalendarSelect
-            label="実績カレンダー"
-            value={settings.actualCalendarId}
-            calendars={calendars}
-            onChange={(actualCalendarId) => handleSettingsChange({ ...settings, actualCalendarId })}
-          />
-          <div className="time-grid">
-            <label>
-              表示開始
-              <input
-                type="time"
-                value={settings.slotMinTime.slice(0, 5)}
-                onChange={(event) => {
-                  const slotMinTime = `${event.currentTarget.value}:00`;
-                  const slotMaxTime = toSlotMaxTime(slotMinTime, toTimeInputValue(settings.slotMaxTime));
-                  handleSettingsChange({ ...settings, slotMinTime, slotMaxTime });
-                }}
-              />
-            </label>
-            <label>
-              表示終了
-              <input
-                type="time"
-                value={toTimeInputValue(settings.slotMaxTime)}
-                onChange={(event) => {
-                  const slotMaxTime = toSlotMaxTime(settings.slotMinTime, event.currentTarget.value);
-                  handleSettingsChange({ ...settings, slotMaxTime });
-                }}
-              />
-            </label>
-          </div>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => handleSettingsChange(defaultSettings)}
-            disabled={isLoading}
-          >
-            設定をリセット
-          </button>
-          <dl className="selected-summary">
-            <div>
-              <dt>予定</dt>
-              <dd>{selectedCalendarNames.planned || '未選択'}</dd>
+        {!isCalendarOnly && (
+          <aside className="settings-panel">
+            <h2>設定</h2>
+            <CalendarSelect
+              label="予定カレンダー"
+              value={settings.plannedCalendarId}
+              calendars={calendars}
+              onChange={(plannedCalendarId) => handleSettingsChange({ ...settings, plannedCalendarId })}
+            />
+            <CalendarSelect
+              label="実績カレンダー"
+              value={settings.actualCalendarId}
+              calendars={calendars}
+              onChange={(actualCalendarId) => handleSettingsChange({ ...settings, actualCalendarId })}
+            />
+            <div className="time-grid">
+              <label>
+                表示開始
+                <input
+                  type="time"
+                  value={settings.slotMinTime.slice(0, 5)}
+                  onChange={(event) => {
+                    const slotMinTime = `${event.currentTarget.value}:00`;
+                    const slotMaxTime = toSlotMaxTime(slotMinTime, toTimeInputValue(settings.slotMaxTime));
+                    handleSettingsChange({ ...settings, slotMinTime, slotMaxTime });
+                  }}
+                />
+              </label>
+              <label>
+                表示終了
+                <input
+                  type="time"
+                  value={toTimeInputValue(settings.slotMaxTime)}
+                  onChange={(event) => {
+                    const slotMaxTime = toSlotMaxTime(settings.slotMinTime, event.currentTarget.value);
+                    handleSettingsChange({ ...settings, slotMaxTime });
+                  }}
+                />
+              </label>
             </div>
-            <div>
-              <dt>実績</dt>
-              <dd>{selectedCalendarNames.actual || '未選択'}</dd>
-            </div>
-          </dl>
-        </aside>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => handleSettingsChange(defaultSettings)}
+              disabled={isLoading}
+            >
+              設定をリセット
+            </button>
+            <dl className="selected-summary">
+              <div>
+                <dt>予定</dt>
+                <dd>{selectedCalendarNames.planned || '未選択'}</dd>
+              </div>
+              <div>
+                <dt>実績</dt>
+                <dd>{selectedCalendarNames.actual || '未選択'}</dd>
+              </div>
+            </dl>
+          </aside>
+        )}
 
         <section className="calendar-panel">
-          {(message || error || isLoading) && (
+          {isCalendarOnly && (
+            <button type="button" className="calendar-only-back" onClick={() => setIsCalendarOnly(false)}>
+              戻る
+            </button>
+          )}
+          {!isCalendarOnly && (message || error || isLoading) && (
             <div className={`status ${error ? 'status-error' : ''}`}>
               {isLoading ? '読み込み中...' : error || message}
             </div>
@@ -242,7 +255,7 @@ export default function App() {
             firstDay={0}
             allDaySlot
             nowIndicator
-            selectable
+            selectable={!isCalendarOnly}
             selectMirror
             unselectAuto={false}
             datesAboveResources
@@ -261,7 +274,7 @@ export default function App() {
               today: '今日',
             }}
             datesSet={handleDatesSet}
-            select={handleSelect}
+            select={isCalendarOnly ? undefined : handleSelect}
             eventClick={(arg) => {
               const link = arg.event.extendedProps.htmlLink as string | undefined;
               if (link) {
