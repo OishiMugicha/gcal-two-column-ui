@@ -19,8 +19,8 @@ const schedulerLicenseKey =
   (import.meta.env.VITE_FULLCALENDAR_LICENSE_KEY as string | undefined) || 'GPL-My-Project-Is-Open-Source';
 
 const resources = [
-  { id: 'planned', title: '予定' },
-  { id: 'actual', title: '実績' },
+  { id: 'planned', title: '予定', displayOrder: 1 },
+  { id: 'actual', title: '実績', displayOrder: 2 },
 ];
 
 export default function App() {
@@ -247,6 +247,7 @@ export default function App() {
             unselectAuto={false}
             datesAboveResources
             resources={resources}
+            resourceOrder="displayOrder"
             events={events}
             slotMinTime={settings.slotMinTime}
             slotMaxTime={settings.slotMaxTime}
