@@ -157,11 +157,14 @@ export default function App() {
       return;
     }
 
+    const draft = draftFromEvent(arg.event);
+
     setEditor({
-      mode: 'view',
+      mode: 'edit',
       ...identity,
       anchor: toAnchor(arg.jsEvent),
-      draft: draftFromEvent(arg.event),
+      draft,
+      originalDraft: draft,
     });
   };
 
@@ -172,7 +175,10 @@ export default function App() {
       return;
     }
 
-    const draft = normalizeDraft(editor.draft);
+    const draft = normalizeDraft({
+      ...editor.draft,
+      title: editor.mode === 'create' || editor.draft.title.trim() ? editor.draft.title : '無題',
+    });
     if (!draft.title.trim()) {
       setError('タイトルを入力してください。');
       return;
@@ -224,6 +230,49 @@ export default function App() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleCloseEditor = async () => {
+    if (!editor || isSaving) {
+      return;
+    }
+
+    if (editor.mode === 'create' || !editor.eventId || !editor.originalDraft) {
+      setEditor(null);
+      return;
+    }
+
+    const draft = normalizeDraft({
+      ...editor.draft,
+      title: editor.draft.title.trim() ? editor.draft.title : '無題',
+    });
+
+    if (areDraftsEqual(draft, normalizeDraft(editor.originalDraft))) {
+      setEditor(null);
+      return;
+    }
+
+    setIsSaving(true);
+    setError('');
+
+    try {
+      await updateEvent(editor.calendarId, editor.eventId, draft);
+      setEditor(null);
+      setMessage('イベントを更新しました。');
+      await refreshEvents();
+    } catch (err) {
+      setError(toErrorMessage(err));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelEditor = () => {
+    if (isSaving) {
+      return;
+    }
+
+    setEditor(null);
   };
 
   const handleDirectEventChange = async (arg: EventDropArg | EventResizeDoneArg) => {
@@ -392,10 +441,10 @@ export default function App() {
         <EventPopover
           editor={editor}
           isSaving={isSaving}
-          onClose={() => setEditor(null)}
+          onClose={() => void handleCloseEditor()}
+          onCancel={handleCancelEditor}
           onDelete={() => void handleDeleteEditor()}
           onDraftChange={updateEditorDraft}
-          onModeChange={(mode) => setEditor((current) => (current ? { ...current, mode } : current))}
           onSubmit={(event) => void handleSaveEditor(event)}
         />
       )}
@@ -407,13 +456,13 @@ function EventPopover(props: {
   editor: EventEditorState;
   isSaving: boolean;
   onClose: () => void;
+  onCancel: () => void;
   onDelete: () => void;
   onDraftChange: (draft: EventDraft) => void;
-  onModeChange: (mode: EventEditorState['mode']) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const { editor } = props;
-  const isReadonly = editor.mode === 'view';
+  const isCreate = editor.mode === 'create';
   const popoverStyle = {
     left: `${Math.min(editor.anchor.x, window.innerWidth - 360)}px`,
     top: `${Math.min(editor.anchor.y, window.innerHeight - 460)}px`,
@@ -424,61 +473,45 @@ function EventPopover(props: {
       <form onSubmit={props.onSubmit}>
         <div className="popover-header">
           <span className={`role-chip role-${editor.role}`}>{getRoleLabel(editor.role)}</span>
-          <button type="button" className="icon-button" aria-label="閉じる" onClick={props.onClose}>
-            ×
-          </button>
-        </div>
-
-        {isReadonly ? (
-          <EventDetails editor={editor} />
-        ) : (
-          <EventFormFields editor={editor} onDraftChange={props.onDraftChange} />
-        )}
-
-        <div className="popover-actions">
-          {isReadonly ? (
-            <>
-              {editor.htmlLink && (
-                <a href={editor.htmlLink} target="_blank" rel="noreferrer">
-                  Googleで開く
-                </a>
-              )}
-              <button type="button" className="danger" disabled={props.isSaving} onClick={props.onDelete}>
+          <div className="popover-header-actions">
+            {!isCreate && editor.htmlLink && (
+              <a className="mini-action" href={editor.htmlLink} target="_blank" rel="noreferrer">
+                Googleで開く
+              </a>
+            )}
+            {!isCreate && (
+              <button type="button" className="mini-action danger" disabled={props.isSaving} onClick={props.onDelete}>
                 削除
               </button>
-              <button type="button" onClick={() => props.onModeChange('edit')}>
-                編集
-              </button>
-            </>
-          ) : (
+            )}
+            <button type="button" className="icon-button" aria-label="閉じる" disabled={props.isSaving} onClick={props.onClose}>
+              ×
+            </button>
+          </div>
+        </div>
+
+        <EventFormFields editor={editor} onDraftChange={props.onDraftChange} />
+
+        <div className="popover-actions">
+          {isCreate ? (
             <>
-              <button
-                type="button"
-                className="secondary"
-                disabled={props.isSaving}
-                onClick={() => (editor.mode === 'create' ? props.onClose() : props.onModeChange('view'))}
-              >
+              <button type="button" className="secondary" disabled={props.isSaving} onClick={props.onCancel}>
                 キャンセル
               </button>
               <button type="submit" disabled={!editor.draft.title.trim() || props.isSaving}>
                 保存
               </button>
             </>
+          ) : (
+            <>
+              <span className="autosave-hint">{props.isSaving ? '保存中...' : '閉じると保存されます'}</span>
+              <button type="button" className="secondary" disabled={props.isSaving} onClick={props.onCancel}>
+                キャンセル
+              </button>
+            </>
           )}
         </div>
       </form>
-    </div>
-  );
-}
-
-function EventDetails(props: { editor: EventEditorState }) {
-  const { draft } = props.editor;
-
-  return (
-    <div className="event-details">
-      <h2>{draft.title || '(無題)'}</h2>
-      <p>{formatDraftRange(draft)}</p>
-      {draft.description ? <p className="description">{draft.description}</p> : <p className="muted">説明なし</p>}
     </div>
   );
 }
@@ -654,6 +687,16 @@ function normalizeDraft(draft: EventDraft): EventDraft {
   };
 }
 
+function areDraftsEqual(left: EventDraft, right: EventDraft) {
+  return (
+    left.title === right.title &&
+    left.start.getTime() === right.start.getTime() &&
+    left.end.getTime() === right.end.getTime() &&
+    left.allDay === right.allDay &&
+    left.description === right.description
+  );
+}
+
 function toAnchor(event: MouseEvent | null) {
   if (!event) {
     return { x: Math.max(24, window.innerWidth / 2 - 170), y: 96 };
@@ -697,23 +740,6 @@ function formatDurationTime(totalMinutes: number) {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
-}
-
-function formatDraftRange(draft: EventDraft) {
-  if (draft.allDay) {
-    const formatter = new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' });
-    return `${formatter.format(draft.start)} - ${formatter.format(addDays(draft.end, -1))}`;
-  }
-
-  const formatter = new Intl.DateTimeFormat('ja-JP', {
-    month: 'numeric',
-    day: 'numeric',
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-
-  return `${formatter.format(draft.start)} - ${formatter.format(draft.end)}`;
 }
 
 function formatDateInput(date: Date) {

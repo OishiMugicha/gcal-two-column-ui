@@ -238,22 +238,30 @@ textarea {
   color: #172026;
   max-height: calc(100vh - 32px);
   overflow: auto;
-  padding: 14px;
+  padding: 12px;
   position: fixed;
-  width: 340px;
+  width: 360px;
   z-index: 10;
 }
 
 .event-popover form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .popover-header {
   align-items: center;
   display: flex;
   justify-content: space-between;
+  gap: 12px;
+}
+
+.popover-header-actions {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
 }
 
 .role-chip {
@@ -289,35 +297,9 @@ textarea {
   background: #eef3f5;
 }
 
-.event-details {
-  display: grid;
-  gap: 8px;
-}
-
-.event-details h2 {
-  font-size: 18px;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.event-details p {
-  color: #596a72;
-  margin: 0;
-}
-
-.event-details .description {
-  color: #172026;
-  line-height: 1.45;
-  white-space: pre-wrap;
-}
-
-.event-details .muted {
-  color: #87939a;
-}
-
 .event-form {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .title-input {
@@ -358,19 +340,31 @@ textarea {
   justify-content: flex-end;
 }
 
-.popover-actions a {
+.mini-action {
+  background: #f3f6f7;
+  border-radius: 6px;
   color: #1d6f8a;
   font-size: 13px;
   font-weight: 700;
-  margin-right: auto;
+  line-height: 1;
+  min-height: 30px;
+  padding: 8px 9px;
   text-decoration: none;
 }
 
-.popover-actions a:hover {
+.mini-action:hover {
+  background: #e7eef1;
   text-decoration: underline;
 }
 
+.mini-action.danger,
 button.danger {
   background: #f2d8d3;
   color: #8a2d14;
+}
+
+.autosave-hint {
+  color: #6a777d;
+  font-size: 12px;
+  margin-right: auto;
 }

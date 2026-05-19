@@ -50,7 +50,7 @@ export type EventDraft = {
   description: string;
 };
 
-export type EventEditorMode = 'view' | 'edit' | 'create';
+export type EventEditorMode = 'edit' | 'create';
 
 export type EventEditorState = {
   mode: EventEditorMode;
@@ -63,6 +63,7 @@ export type EventEditorState = {
     y: number;
   };
   draft: EventDraft;
+  originalDraft?: EventDraft;
 };
 
 export type PendingSelection = {
