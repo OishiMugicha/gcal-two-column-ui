@@ -230,6 +230,24 @@ textarea {
   box-shadow: none;
 }
 
+.calendar-event-content {
+  align-items: baseline;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0 4px;
+  min-width: 0;
+}
+
+.calendar-event-title {
+  overflow-wrap: anywhere;
+}
+
+.calendar-event-time {
+  font-size: 11px;
+  opacity: 0.86;
+  white-space: nowrap;
+}
+
 .event-popover {
   background: #ffffff;
   border: 1px solid #d8dee3;

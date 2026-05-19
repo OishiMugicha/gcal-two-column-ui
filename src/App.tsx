@@ -2,7 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import interactionPlugin, { type EventResizeDoneArg } from '@fullcalendar/interaction';
 import resourceTimeGridPlugin from '@fullcalendar/resource-timegrid';
-import type { DateSelectArg, DatesSetArg, EventApi, EventClickArg, EventDropArg, EventInput } from '@fullcalendar/core';
+import type {
+  DateSelectArg,
+  DatesSetArg,
+  EventApi,
+  EventClickArg,
+  EventContentArg,
+  EventDropArg,
+  EventInput,
+} from '@fullcalendar/core';
 import {
   createEvent,
   deleteEvent,
@@ -484,6 +492,7 @@ export default function App() {
             eventDrop={(arg) => void handleDirectEventChange(arg)}
             eventResize={(arg) => void handleDirectEventChange(arg)}
             eventClassNames={(arg) => [`event-${arg.event.extendedProps.role || 'unknown'}`]}
+            eventContent={renderEventContent}
           />
         </section>
       </main>
@@ -765,6 +774,31 @@ function areDraftsEqual(left: EventDraft, right: EventDraft) {
     left.allDay === right.allDay &&
     left.description === right.description
   );
+}
+
+function renderEventContent(arg: EventContentArg) {
+  if (arg.event.allDay) {
+    return <span className="calendar-event-title">{arg.event.title}</span>;
+  }
+
+  const timeRange = formatEventTimeRange(arg.event.start, arg.event.end);
+
+  return (
+    <span className="calendar-event-content">
+      <span className="calendar-event-title">{arg.event.title}</span>
+      {timeRange && <span className="calendar-event-time">{timeRange}</span>}
+    </span>
+  );
+}
+
+function formatEventTimeRange(start: Date | null, end: Date | null) {
+  if (!start || !end) {
+    return '';
+  }
+
+  return `${formatClockTime(start.getHours() * 60 + start.getMinutes())}-${formatClockTime(
+    end.getHours() * 60 + end.getMinutes(),
+  )}`;
 }
 
 function toAnchor(event: MouseEvent | null) {
