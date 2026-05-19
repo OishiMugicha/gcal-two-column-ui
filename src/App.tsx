@@ -6,17 +6,17 @@ import type { DateSelectArg, DatesSetArg, EventApi, EventClickArg, EventDropArg,
 import {
   createEvent,
   deleteEvent,
-  hasAccessToken,
+  getSession,
   listCalendars,
   listEvents,
   signIn,
+  signOut,
   toCalendarEvent,
   updateEvent,
 } from './googleCalendar';
 import { defaultSettings, loadSettings, saveSettings } from './settings';
 import type { AppSettings, CalendarRole, EventDraft, EventEditorState, GoogleCalendar } from './types';
 
-const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 const schedulerLicenseKey =
   (import.meta.env.VITE_FULLCALENDAR_LICENSE_KEY as string | undefined) || 'GPL-My-Project-Is-Open-Source';
 
@@ -39,7 +39,7 @@ export default function App() {
   const [events, setEvents] = useState<EventInput[]>([]);
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date } | null>(null);
   const [editor, setEditor] = useState<EventEditorState | null>(null);
-  const [isSignedIn, setIsSignedIn] = useState(() => hasAccessToken());
+  const [isSignedIn, setIsSignedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isCalendarOnly, setIsCalendarOnly] = useState(false);
@@ -47,6 +47,49 @@ export default function App() {
   const [error, setError] = useState('');
 
   const canLoadEvents = Boolean(settings.plannedCalendarId && settings.actualCalendarId && isSignedIn);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const restoreSession = async () => {
+      const authError = new URLSearchParams(window.location.search).get('auth_error');
+      if (authError) {
+        setError(decodeURIComponent(authError));
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+
+      setIsLoading(true);
+      try {
+        const session = await getSession();
+        if (!isActive || !session.authenticated) {
+          return;
+        }
+
+        setIsSignedIn(true);
+        const nextCalendars = await listCalendars();
+        if (!isActive) {
+          return;
+        }
+
+        setCalendars(nextCalendars);
+        setMessage('ログイン状態を復元しました。');
+      } catch (err) {
+        if (isActive) {
+          setError(toErrorMessage(err));
+        }
+      } finally {
+        if (isActive) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void restoreSession();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   const selectedCalendarNames = useMemo(() => {
     const planned = calendars.find((calendar) => calendar.id === settings.plannedCalendarId)?.summary;
@@ -84,21 +127,29 @@ export default function App() {
     [calendars, dateRange, settings.actualCalendarId, settings.plannedCalendarId],
   );
 
-  const handleSignIn = async () => {
-    if (!googleClientId) {
-      setError('.env.localにVITE_GOOGLE_CLIENT_IDを設定してください。');
-      return;
+  useEffect(() => {
+    if (canLoadEvents && dateRange && calendars.length > 0) {
+      void refreshEvents(dateRange);
     }
+  }, [calendars.length, canLoadEvents, dateRange, refreshEvents]);
 
+  const handleSignIn = async () => {
     setIsLoading(true);
     setError('');
 
     try {
-      await signIn(googleClientId);
-      setIsSignedIn(true);
-      const nextCalendars = await listCalendars();
-      setCalendars(nextCalendars);
-      setMessage('Googleにログインしました。予定カレンダーと実績カレンダーを選択してください。');
+      if (isSignedIn) {
+        await signOut();
+        setIsSignedIn(false);
+        setCalendars([]);
+        setEvents([]);
+        setEditor(null);
+        setMessage('ログアウトしました。');
+        return;
+      }
+
+      await signIn();
+      return;
     } catch (err) {
       setError(toErrorMessage(err));
     } finally {
@@ -314,7 +365,7 @@ export default function App() {
           </div>
           <div className="topbar-actions">
             <button type="button" onClick={handleSignIn} disabled={isLoading || isSaving}>
-              {isSignedIn ? '再ログイン' : 'Googleでログイン'}
+              {isSignedIn ? 'ログアウト' : 'Googleでログイン'}
             </button>
             <button type="button" onClick={() => void refreshEvents()} disabled={!canLoadEvents || isLoading || isSaving}>
               更新
