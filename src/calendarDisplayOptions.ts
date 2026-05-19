@@ -1,5 +1,5 @@
 export const calendarDisplayOptions = {
-  eventMinHeight: 15,
+  eventMinHeight: 0,
 } as const;
 
 export type TimedEventRange = {
