@@ -22,6 +22,7 @@ import {
   toCalendarEvent,
   updateEvent,
 } from './googleCalendar';
+import { calendarDisplayOptions } from './calendarDisplayOptions';
 import { defaultSettings, loadSettings, saveSettings } from './settings';
 import type { AppSettings, CalendarRole, EventDraft, EventEditorState, GoogleCalendar } from './types';
 
@@ -475,6 +476,7 @@ export default function App() {
             eventResourceEditable={false}
             editable={!isCalendarOnly && canLoadEvents && !isSaving}
             events={events}
+            eventMinHeight={calendarDisplayOptions.eventMinHeight}
             slotMinTime={settings.slotMinTime}
             slotMaxTime={settings.slotMaxTime}
             height="100%"
