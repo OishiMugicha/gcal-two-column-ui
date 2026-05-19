@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:vercel": "vercel dev --listen 3000",
+    "check:local-env": "node scripts/check-local-env.mjs",
     "test": "vitest run",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
@@ -25,6 +27,7 @@
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "typescript": "^5.7.2",
+    "vercel": "^54.1.0",
     "vitest": "^4.1.6"
   }
 }
