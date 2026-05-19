@@ -1,18 +1,20 @@
 import { useCallback, useMemo, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
-import interactionPlugin from '@fullcalendar/interaction';
+import interactionPlugin, { type EventResizeDoneArg } from '@fullcalendar/interaction';
 import resourceTimeGridPlugin from '@fullcalendar/resource-timegrid';
-import type { DateSelectArg, DatesSetArg, EventInput } from '@fullcalendar/core';
+import type { DateSelectArg, DatesSetArg, EventApi, EventClickArg, EventDropArg, EventInput } from '@fullcalendar/core';
 import {
-  createActualEvent,
+  createEvent,
+  deleteEvent,
   hasAccessToken,
   listCalendars,
   listEvents,
   signIn,
   toCalendarEvent,
+  updateEvent,
 } from './googleCalendar';
 import { defaultSettings, loadSettings, saveSettings } from './settings';
-import type { AppSettings, GoogleCalendar, PendingSelection } from './types';
+import type { AppSettings, CalendarRole, EventDraft, EventEditorState, GoogleCalendar } from './types';
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 const schedulerLicenseKey =
@@ -23,15 +25,23 @@ const resources = [
   { id: 'actual', title: '実績', displayOrder: 2 },
 ];
 
+const emptyDraft: EventDraft = {
+  title: '',
+  start: new Date(),
+  end: addMinutes(new Date(), 30),
+  allDay: false,
+  description: '',
+};
+
 export default function App() {
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
   const [calendars, setCalendars] = useState<GoogleCalendar[]>([]);
   const [events, setEvents] = useState<EventInput[]>([]);
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date } | null>(null);
-  const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
-  const [actualTitle, setActualTitle] = useState('');
+  const [editor, setEditor] = useState<EventEditorState | null>(null);
   const [isSignedIn, setIsSignedIn] = useState(() => hasAccessToken());
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isCalendarOnly, setIsCalendarOnly] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -62,8 +72,8 @@ export default function App() {
         const actualCalendar = calendars.find((calendar) => calendar.id === settings.actualCalendarId);
 
         setEvents([
-          ...plannedEvents.map((event) => toCalendarEvent(event, 'planned', plannedCalendar)),
-          ...actualEvents.map((event) => toCalendarEvent(event, 'actual', actualCalendar)),
+          ...plannedEvents.map((event) => toCalendarEvent(event, 'planned', settings.plannedCalendarId, plannedCalendar)),
+          ...actualEvents.map((event) => toCalendarEvent(event, 'actual', settings.actualCalendarId, actualCalendar)),
         ]);
       } catch (err) {
         setError(toErrorMessage(err));
@@ -99,6 +109,7 @@ export default function App() {
   const handleSettingsChange = (nextSettings: AppSettings) => {
     setSettings(nextSettings);
     saveSettings(nextSettings);
+    setEditor(null);
   };
 
   const handleDatesSet = (arg: DatesSetArg) => {
@@ -111,47 +122,137 @@ export default function App() {
   };
 
   const handleSelect = (arg: DateSelectArg) => {
-    const resourceId = getResourceId(arg.resource);
-    if (resourceId !== 'actual') {
-      setMessage('実績レーンでドラッグすると実績イベントを作成できます。');
+    const role = getResourceId(arg.resource);
+    if (!role) {
+      setMessage('予定または実績の列を選択してください。');
       return;
     }
 
-    setActualTitle('');
-    setPendingSelection({
-      start: arg.start,
-      end: arg.end,
-      allDay: arg.allDay,
+    const calendarId = getCalendarIdForRole(role, settings);
+    if (!calendarId) {
+      setMessage(`${getRoleLabel(role)}カレンダーを選択してください。`);
+      return;
+    }
+
+    setEditor({
+      mode: 'create',
+      role,
+      calendarId,
+      anchor: toAnchor(arg.jsEvent),
+      draft: {
+        ...emptyDraft,
+        start: arg.start,
+        end: arg.end,
+        allDay: arg.allDay,
+      },
     });
   };
 
-  const handleCreateActual = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleEventClick = (arg: EventClickArg) => {
+    arg.jsEvent.preventDefault();
 
-    if (!pendingSelection || !actualTitle.trim()) {
+    const identity = getEventIdentity(arg.event);
+    if (!identity) {
+      setError('イベント情報を読み取れませんでした。');
       return;
     }
 
-    setIsLoading(true);
+    setEditor({
+      mode: 'view',
+      ...identity,
+      anchor: toAnchor(arg.jsEvent),
+      draft: draftFromEvent(arg.event),
+    });
+  };
+
+  const handleSaveEditor = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!editor || isSaving) {
+      return;
+    }
+
+    const draft = normalizeDraft(editor.draft);
+    if (!draft.title.trim()) {
+      setError('タイトルを入力してください。');
+      return;
+    }
+
+    setIsSaving(true);
     setError('');
 
     try {
-      await createActualEvent(
-        settings.actualCalendarId,
-        actualTitle.trim(),
-        pendingSelection.start,
-        pendingSelection.end,
-        pendingSelection.allDay,
-      );
-      setPendingSelection(null);
-      setActualTitle('');
-      setMessage('実績を作成しました。');
+      if (editor.mode === 'create') {
+        await createEvent(editor.calendarId, draft);
+        setMessage(`${getRoleLabel(editor.role)}イベントを作成しました。`);
+      } else {
+        if (!editor.eventId) {
+          throw new Error('更新対象のイベントIDがありません。');
+        }
+        await updateEvent(editor.calendarId, editor.eventId, draft);
+        setMessage('イベントを更新しました。');
+      }
+
+      setEditor(null);
       await refreshEvents();
     } catch (err) {
       setError(toErrorMessage(err));
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
     }
+  };
+
+  const handleDeleteEditor = async () => {
+    if (!editor?.eventId || isSaving) {
+      return;
+    }
+
+    if (!window.confirm('このイベントを削除しますか？')) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError('');
+
+    try {
+      await deleteEvent(editor.calendarId, editor.eventId);
+      setEditor(null);
+      setMessage('イベントを削除しました。');
+      await refreshEvents();
+    } catch (err) {
+      setError(toErrorMessage(err));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDirectEventChange = async (arg: EventDropArg | EventResizeDoneArg) => {
+    const identity = getEventIdentity(arg.event);
+    if (!identity) {
+      arg.revert();
+      setError('イベント情報を読み取れませんでした。');
+      return;
+    }
+
+    const draft = draftFromEvent(arg.event);
+
+    setIsSaving(true);
+    setError('');
+
+    try {
+      await updateEvent(identity.calendarId, identity.eventId, draft);
+      setMessage('イベントの日時を更新しました。');
+      setEditor(null);
+    } catch (err) {
+      arg.revert();
+      setError(toErrorMessage(err));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const updateEditorDraft = (nextDraft: EventDraft) => {
+    setEditor((current) => (current ? { ...current, draft: normalizeDraft(nextDraft) } : current));
   };
 
   return (
@@ -160,13 +261,13 @@ export default function App() {
         <header className="topbar">
           <div>
             <h1>予定・実績カレンダー</h1>
-            <p>Google Calendarの予定と実績を、週表示の各日2レーンで比較します。</p>
+            <p>Google Calendarの予定と実績を、週表示の2列で比較・編集します。</p>
           </div>
           <div className="topbar-actions">
-            <button type="button" onClick={handleSignIn} disabled={isLoading}>
+            <button type="button" onClick={handleSignIn} disabled={isLoading || isSaving}>
               {isSignedIn ? '再ログイン' : 'Googleでログイン'}
             </button>
-            <button type="button" onClick={() => void refreshEvents()} disabled={!canLoadEvents || isLoading}>
+            <button type="button" onClick={() => void refreshEvents()} disabled={!canLoadEvents || isLoading || isSaving}>
               更新
             </button>
             <button type="button" className="secondary" onClick={() => setIsCalendarOnly(true)}>
@@ -221,7 +322,7 @@ export default function App() {
               type="button"
               className="secondary"
               onClick={() => handleSettingsChange(defaultSettings)}
-              disabled={isLoading}
+              disabled={isLoading || isSaving}
             >
               設定をリセット
             </button>
@@ -244,9 +345,9 @@ export default function App() {
               戻る
             </button>
           )}
-          {!isCalendarOnly && (message || error || isLoading) && (
+          {!isCalendarOnly && (message || error || isLoading || isSaving) && (
             <div className={`status ${error ? 'status-error' : ''}`}>
-              {isLoading ? '読み込み中...' : error || message}
+              {isLoading ? '読み込み中...' : isSaving ? '保存中...' : error || message}
             </div>
           )}
           <FullCalendar
@@ -257,12 +358,14 @@ export default function App() {
             firstDay={0}
             allDaySlot
             nowIndicator
-            selectable={!isCalendarOnly}
+            selectable={!isCalendarOnly && canLoadEvents}
             selectMirror
             unselectAuto={false}
             datesAboveResources
             resources={resources}
             resourceOrder="displayOrder"
+            eventResourceEditable={false}
+            editable={!isCalendarOnly && canLoadEvents && !isSaving}
             events={events}
             slotMinTime={settings.slotMinTime}
             slotMaxTime={settings.slotMaxTime}
@@ -277,42 +380,193 @@ export default function App() {
             }}
             datesSet={handleDatesSet}
             select={isCalendarOnly ? undefined : handleSelect}
-            eventClick={(arg) => {
-              const link = arg.event.extendedProps.htmlLink as string | undefined;
-              if (link) {
-                window.open(link, '_blank', 'noopener,noreferrer');
-              }
-            }}
+            eventClick={handleEventClick}
+            eventDrop={(arg) => void handleDirectEventChange(arg)}
+            eventResize={(arg) => void handleDirectEventChange(arg)}
             eventClassNames={(arg) => [`event-${arg.event.extendedProps.role || 'unknown'}`]}
           />
         </section>
       </main>
 
-      {pendingSelection && (
-        <div className="modal-backdrop" role="presentation">
-          <form className="modal" onSubmit={handleCreateActual}>
-            <h2>実績を作成</h2>
-            <p>{formatSelectionRange(pendingSelection)}</p>
-            <label>
-              タイトル
-              <input
-                autoFocus
-                value={actualTitle}
-                onChange={(event) => setActualTitle(event.currentTarget.value)}
-                placeholder="例: 設計作業"
-              />
-            </label>
-            <div className="modal-actions">
-              <button type="button" className="secondary" onClick={() => setPendingSelection(null)}>
+      {editor && (
+        <EventPopover
+          editor={editor}
+          isSaving={isSaving}
+          onClose={() => setEditor(null)}
+          onDelete={() => void handleDeleteEditor()}
+          onDraftChange={updateEditorDraft}
+          onModeChange={(mode) => setEditor((current) => (current ? { ...current, mode } : current))}
+          onSubmit={(event) => void handleSaveEditor(event)}
+        />
+      )}
+    </div>
+  );
+}
+
+function EventPopover(props: {
+  editor: EventEditorState;
+  isSaving: boolean;
+  onClose: () => void;
+  onDelete: () => void;
+  onDraftChange: (draft: EventDraft) => void;
+  onModeChange: (mode: EventEditorState['mode']) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  const { editor } = props;
+  const isReadonly = editor.mode === 'view';
+  const popoverStyle = {
+    left: `${Math.min(editor.anchor.x, window.innerWidth - 360)}px`,
+    top: `${Math.min(editor.anchor.y, window.innerHeight - 460)}px`,
+  };
+
+  return (
+    <div className="event-popover" style={popoverStyle}>
+      <form onSubmit={props.onSubmit}>
+        <div className="popover-header">
+          <span className={`role-chip role-${editor.role}`}>{getRoleLabel(editor.role)}</span>
+          <button type="button" className="icon-button" aria-label="閉じる" onClick={props.onClose}>
+            ×
+          </button>
+        </div>
+
+        {isReadonly ? (
+          <EventDetails editor={editor} />
+        ) : (
+          <EventFormFields editor={editor} onDraftChange={props.onDraftChange} />
+        )}
+
+        <div className="popover-actions">
+          {isReadonly ? (
+            <>
+              {editor.htmlLink && (
+                <a href={editor.htmlLink} target="_blank" rel="noreferrer">
+                  Googleで開く
+                </a>
+              )}
+              <button type="button" className="danger" disabled={props.isSaving} onClick={props.onDelete}>
+                削除
+              </button>
+              <button type="button" onClick={() => props.onModeChange('edit')}>
+                編集
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="secondary"
+                disabled={props.isSaving}
+                onClick={() => (editor.mode === 'create' ? props.onClose() : props.onModeChange('view'))}
+              >
                 キャンセル
               </button>
-              <button type="submit" disabled={!actualTitle.trim() || isLoading}>
-                作成
+              <button type="submit" disabled={!editor.draft.title.trim() || props.isSaving}>
+                保存
               </button>
-            </div>
-          </form>
+            </>
+          )}
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function EventDetails(props: { editor: EventEditorState }) {
+  const { draft } = props.editor;
+
+  return (
+    <div className="event-details">
+      <h2>{draft.title || '(無題)'}</h2>
+      <p>{formatDraftRange(draft)}</p>
+      {draft.description ? <p className="description">{draft.description}</p> : <p className="muted">説明なし</p>}
+    </div>
+  );
+}
+
+function EventFormFields(props: { editor: EventEditorState; onDraftChange: (draft: EventDraft) => void }) {
+  const { draft } = props.editor;
+
+  return (
+    <div className="event-form">
+      <input
+        autoFocus
+        className="title-input"
+        value={draft.title}
+        onChange={(event) => props.onDraftChange({ ...draft, title: event.currentTarget.value })}
+        placeholder="タイトルを追加"
+      />
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={draft.allDay}
+          onChange={(event) => {
+            const allDay = event.currentTarget.checked;
+            const start = allDay ? startOfDay(draft.start) : draft.start;
+            const end = allDay ? addDays(startOfDay(draft.end), 0) : draft.end;
+            props.onDraftChange(normalizeDraft({ ...draft, allDay, start, end }));
+          }}
+        />
+        終日
+      </label>
+      {draft.allDay ? (
+        <div className="date-grid">
+          <label>
+            開始日
+            <input
+              type="date"
+              value={formatDateInput(draft.start)}
+              onChange={(event) => {
+                const start = parseDateInput(event.currentTarget.value);
+                props.onDraftChange({ ...draft, start });
+              }}
+            />
+          </label>
+          <label>
+            終了日
+            <input
+              type="date"
+              value={formatDateInput(addDays(draft.end, -1))}
+              onChange={(event) => {
+                const end = addDays(parseDateInput(event.currentTarget.value), 1);
+                props.onDraftChange({ ...draft, end });
+              }}
+            />
+          </label>
+        </div>
+      ) : (
+        <div className="date-grid">
+          <label>
+            開始
+            <input
+              type="datetime-local"
+              value={formatDateTimeInput(draft.start)}
+              onChange={(event) => {
+                const start = parseDateTimeInput(event.currentTarget.value);
+                props.onDraftChange({ ...draft, start });
+              }}
+            />
+          </label>
+          <label>
+            終了
+            <input
+              type="datetime-local"
+              value={formatDateTimeInput(draft.end)}
+              onChange={(event) => {
+                const end = parseDateTimeInput(event.currentTarget.value);
+                props.onDraftChange({ ...draft, end });
+              }}
+            />
+          </label>
         </div>
       )}
+      <label>
+        説明
+        <textarea
+          value={draft.description}
+          onChange={(event) => props.onDraftChange({ ...draft, description: event.currentTarget.value })}
+          placeholder="メモ、URL、作業内容など"
+        />
+      </label>
     </div>
   );
 }
@@ -339,8 +593,76 @@ function CalendarSelect(props: {
   );
 }
 
-function getResourceId(resource: DateSelectArg['resource']) {
-  return (resource as { id?: string } | undefined)?.id;
+function getResourceId(resource: DateSelectArg['resource']): CalendarRole | null {
+  const id = (resource as { id?: string } | undefined)?.id;
+  return id === 'planned' || id === 'actual' ? id : null;
+}
+
+function getCalendarIdForRole(role: CalendarRole, settings: AppSettings) {
+  return role === 'planned' ? settings.plannedCalendarId : settings.actualCalendarId;
+}
+
+function getRoleLabel(role: CalendarRole) {
+  return role === 'planned' ? '予定' : '実績';
+}
+
+function getEventIdentity(event: EventApi) {
+  const role = event.extendedProps.role as CalendarRole | undefined;
+  const calendarId = event.extendedProps.calendarId as string | undefined;
+  const eventId = event.extendedProps.googleEventId as string | undefined;
+
+  if (!role || !calendarId || !eventId) {
+    return null;
+  }
+
+  return {
+    role,
+    calendarId,
+    eventId,
+    htmlLink: event.extendedProps.htmlLink as string | undefined,
+  };
+}
+
+function draftFromEvent(event: EventApi): EventDraft {
+  const start = event.start ?? new Date();
+  const end = event.end ?? (event.allDay ? addDays(start, 1) : addMinutes(start, 30));
+
+  return normalizeDraft({
+    title: event.title,
+    start,
+    end,
+    allDay: event.allDay,
+    description: (event.extendedProps.description as string | undefined) || '',
+  });
+}
+
+function normalizeDraft(draft: EventDraft): EventDraft {
+  const title = draft.title;
+  const start = draft.allDay ? startOfDay(draft.start) : draft.start;
+  let end = draft.allDay ? startOfDay(draft.end) : draft.end;
+
+  if (end <= start) {
+    end = draft.allDay ? addDays(start, 1) : addMinutes(start, 30);
+  }
+
+  return {
+    title,
+    start,
+    end,
+    allDay: draft.allDay,
+    description: draft.description,
+  };
+}
+
+function toAnchor(event: MouseEvent | null) {
+  if (!event) {
+    return { x: Math.max(24, window.innerWidth / 2 - 170), y: 96 };
+  }
+
+  return {
+    x: Math.max(16, event.clientX + 12),
+    y: Math.max(16, event.clientY + 12),
+  };
 }
 
 function toTimeInputValue(duration: string) {
@@ -377,15 +699,58 @@ function formatDurationTime(totalMinutes: number) {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
 }
 
-function formatSelectionRange(selection: PendingSelection) {
+function formatDraftRange(draft: EventDraft) {
+  if (draft.allDay) {
+    const formatter = new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' });
+    return `${formatter.format(draft.start)} - ${formatter.format(addDays(draft.end, -1))}`;
+  }
+
   const formatter = new Intl.DateTimeFormat('ja-JP', {
     month: 'numeric',
     day: 'numeric',
-    hour: selection.allDay ? undefined : '2-digit',
-    minute: selection.allDay ? undefined : '2-digit',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 
-  return `${formatter.format(selection.start)} - ${formatter.format(selection.end)}`;
+  return `${formatter.format(draft.start)} - ${formatter.format(draft.end)}`;
+}
+
+function formatDateInput(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatDateTimeInput(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function parseDateInput(value: string) {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function parseDateTimeInput(value: string) {
+  return new Date(value);
+}
+
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addMinutes(date: Date, minutes: number) {
+  return new Date(date.getTime() + minutes * 60 * 1000);
+}
+
+function addDays(date: Date, days: number) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 }
 
 function toErrorMessage(error: unknown) {

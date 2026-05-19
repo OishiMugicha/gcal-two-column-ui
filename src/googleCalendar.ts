@@ -1,5 +1,6 @@
 import type {
   CalendarRole,
+  EventDraft,
   GoogleCalendar,
   GoogleCalendarListResponse,
   GoogleEvent,
@@ -127,35 +128,38 @@ export async function listEvents(calendarId: string, timeMin: Date, timeMax: Dat
   return (data.items ?? []).filter((event) => event.status !== 'cancelled');
 }
 
-export async function createActualEvent(calendarId: string, title: string, start: Date, end: Date, allDay: boolean) {
-  const body = allDay
-    ? {
-        summary: title,
-        start: { date: toDateOnly(start) },
-        end: { date: toDateOnly(end) },
-      }
-    : {
-        summary: title,
-        start: {
-          dateTime: start.toISOString(),
-          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        },
-        end: {
-          dateTime: end.toISOString(),
-          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        },
-      };
+export async function createEvent(calendarId: string, draft: EventDraft) {
+  await googleFetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, {
+    method: 'POST',
+    body: JSON.stringify(toGoogleEventBody(draft)),
+  });
+}
 
+export async function updateEvent(calendarId: string, eventId: string, draft: EventDraft) {
   await googleFetch(
-    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
     {
-      method: 'POST',
-      body: JSON.stringify(body),
+      method: 'PATCH',
+      body: JSON.stringify(toGoogleEventBody(draft)),
     },
   );
 }
 
-export function toCalendarEvent(event: GoogleEvent, role: CalendarRole, colors: CalendarEventColors = {}) {
+export async function deleteEvent(calendarId: string, eventId: string) {
+  await googleFetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    {
+      method: 'DELETE',
+    },
+  );
+}
+
+export function toCalendarEvent(
+  event: GoogleEvent,
+  role: CalendarRole,
+  calendarId: string,
+  colors: CalendarEventColors = {},
+) {
   const isAllDay = Boolean(event.start.date);
   const fallbackColors = FALLBACK_EVENT_COLORS[role];
   const backgroundColor = colors.backgroundColor || fallbackColors.backgroundColor;
@@ -171,10 +175,17 @@ export function toCalendarEvent(event: GoogleEvent, role: CalendarRole, colors: 
     backgroundColor,
     borderColor: backgroundColor,
     textColor: foregroundColor,
-    editable: false,
+    editable: true,
+    durationEditable: true,
+    startEditable: true,
     extendedProps: {
       role,
+      calendarId,
+      googleEventId: event.id,
+      description: event.description || '',
       htmlLink: event.htmlLink,
+      recurringEventId: event.recurringEventId,
+      originalStartTime: event.originalStartTime,
     },
   };
 }
@@ -188,7 +199,7 @@ async function googleFetch<T = unknown>(url: string, init: RequestInit = {}): Pr
     ...init,
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
       ...init.headers,
     },
   });
@@ -231,6 +242,33 @@ function loadGoogleIdentityServices(): Promise<void> {
   });
 }
 
+function toGoogleEventBody(draft: EventDraft) {
+  if (draft.allDay) {
+    return {
+      summary: draft.title,
+      description: draft.description || undefined,
+      start: { date: toDateOnly(draft.start) },
+      end: { date: toDateOnly(draft.end) },
+    };
+  }
+
+  return {
+    summary: draft.title,
+    description: draft.description || undefined,
+    start: {
+      dateTime: draft.start.toISOString(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    },
+    end: {
+      dateTime: draft.end.toISOString(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    },
+  };
+}
+
 function toDateOnly(date: Date) {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }

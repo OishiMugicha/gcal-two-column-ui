@@ -29,14 +29,40 @@ export type GoogleEvent = {
   id: string;
   summary?: string;
   description?: string;
+  location?: string;
   start: GoogleEventDate;
   end: GoogleEventDate;
   status?: string;
   htmlLink?: string;
+  recurringEventId?: string;
+  originalStartTime?: GoogleEventDate;
 };
 
 export type GoogleEventsResponse = {
   items?: GoogleEvent[];
+};
+
+export type EventDraft = {
+  title: string;
+  start: Date;
+  end: Date;
+  allDay: boolean;
+  description: string;
+};
+
+export type EventEditorMode = 'view' | 'edit' | 'create';
+
+export type EventEditorState = {
+  mode: EventEditorMode;
+  calendarId: string;
+  role: CalendarRole;
+  eventId?: string;
+  htmlLink?: string;
+  anchor: {
+    x: number;
+    y: number;
+  };
+  draft: EventDraft;
 };
 
 export type PendingSelection = {
