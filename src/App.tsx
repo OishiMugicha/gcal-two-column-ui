@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import interactionPlugin, { type EventResizeDoneArg } from '@fullcalendar/interaction';
 import resourceTimeGridPlugin from '@fullcalendar/resource-timegrid';
@@ -461,15 +461,34 @@ function EventPopover(props: {
   onDraftChange: (draft: EventDraft) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
-  const { editor } = props;
+  const { editor, isSaving, onClose } = props;
+  const popoverRef = useRef<HTMLDivElement>(null);
   const isCreate = editor.mode === 'create';
   const popoverStyle = {
     left: `${Math.min(editor.anchor.x, window.innerWidth - 360)}px`,
     top: `${Math.min(editor.anchor.y, window.innerHeight - 460)}px`,
   };
 
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (isSaving) {
+        return;
+      }
+
+      const target = event.target;
+      if (!(target instanceof Node) || popoverRef.current?.contains(target)) {
+        return;
+      }
+
+      onClose();
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [isSaving, onClose]);
+
   return (
-    <div className="event-popover" style={popoverStyle}>
+    <div ref={popoverRef} className="event-popover" style={popoverStyle}>
       <form onSubmit={props.onSubmit}>
         <div className="popover-header">
           <span className={`role-chip role-${editor.role}`}>{getRoleLabel(editor.role)}</span>
