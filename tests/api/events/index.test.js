@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import handler from './index.js';
-import { googleFetchForSession } from '../_lib/google.js';
+import handler from '../../../api/events/index.js';
+import { googleFetchForSession } from '../../../api/_lib/google.js';
 
-vi.mock('../_lib/google.js', () => ({
+vi.mock('../../../api/_lib/google.js', () => ({
   googleFetchForSession: vi.fn(),
 }));
 
@@ -34,6 +34,9 @@ describe('POST /api/events', () => {
       body: {
         calendarId: 'primary',
         event,
+      },
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.from(JSON.stringify(this.body));
       },
     };
     const res = createMockResponse();
