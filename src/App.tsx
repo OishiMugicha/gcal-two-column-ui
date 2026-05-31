@@ -193,7 +193,7 @@ export default function App() {
   };
 
   const handleDateClick = (arg: DateClickArg) => {
-    if (arg.jsEvent.detail !== 2 || arg.allDay || isCalendarOnly || !canLoadEvents || isSaving) {
+    if (arg.jsEvent.detail !== 2 || arg.allDay || !canLoadEvents || isSaving) {
       return;
     }
 
@@ -462,7 +462,7 @@ export default function App() {
             resources={resources}
             resourceOrder="displayOrder"
             eventResourceEditable={false}
-            editable={!isCalendarOnly && canLoadEvents && !isSaving}
+            editable={canLoadEvents && !isSaving}
             events={events}
             eventMinHeight={calendarDisplayOptions.eventMinHeight}
             slotMinTime={settings.slotMinTime}
