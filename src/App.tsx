@@ -3,7 +3,6 @@ import FullCalendar from '@fullcalendar/react';
 import interactionPlugin, { type EventResizeDoneArg } from '@fullcalendar/interaction';
 import resourceTimeGridPlugin from '@fullcalendar/resource-timegrid';
 import type {
-  DateSelectArg,
   DatesSetArg,
   EventApi,
   EventClickArg,
@@ -12,7 +11,6 @@ import type {
   EventInput,
 } from '@fullcalendar/core';
 import {
-  createEvent,
   deleteEvent,
   getSession,
   listCalendars,
@@ -33,14 +31,6 @@ const resources = [
   { id: 'planned', title: '予定', displayOrder: 1 },
   { id: 'actual', title: '実績', displayOrder: 2 },
 ];
-
-const emptyDraft: EventDraft = {
-  title: '',
-  start: new Date(),
-  end: addMinutes(new Date(), 30),
-  allDay: false,
-  description: '',
-};
 
 export default function App() {
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
@@ -181,33 +171,6 @@ export default function App() {
     }
   };
 
-  const handleSelect = (arg: DateSelectArg) => {
-    const role = getResourceId(arg.resource);
-    if (!role) {
-      setMessage('予定または実績の列を選択してください。');
-      return;
-    }
-
-    const calendarId = getCalendarIdForRole(role, settings);
-    if (!calendarId) {
-      setMessage(`${getRoleLabel(role)}カレンダーを選択してください。`);
-      return;
-    }
-
-    setEditor({
-      mode: 'create',
-      role,
-      calendarId,
-      anchor: toAnchor(arg.jsEvent),
-      draft: {
-        ...emptyDraft,
-        start: arg.start,
-        end: arg.end,
-        allDay: arg.allDay,
-      },
-    });
-  };
-
   const handleEventClick = (arg: EventClickArg) => {
     arg.jsEvent.preventDefault();
 
@@ -237,7 +200,7 @@ export default function App() {
 
     const draft = normalizeDraft({
       ...editor.draft,
-      title: editor.mode === 'create' || editor.draft.title.trim() ? editor.draft.title : '無題',
+      title: editor.draft.title.trim() ? editor.draft.title : '無題',
     });
     if (!draft.title.trim()) {
       setError('タイトルを入力してください。');
@@ -248,16 +211,8 @@ export default function App() {
     setError('');
 
     try {
-      if (editor.mode === 'create') {
-        await createEvent(editor.calendarId, draft);
-        setMessage(`${getRoleLabel(editor.role)}イベントを作成しました。`);
-      } else {
-        if (!editor.eventId) {
-          throw new Error('更新対象のイベントIDがありません。');
-        }
-        await updateEvent(editor.calendarId, editor.eventId, draft);
-        setMessage('イベントを更新しました。');
-      }
+      await updateEvent(editor.calendarId, editor.eventId, draft);
+      setMessage('イベントを更新しました。');
 
       setEditor(null);
       await refreshEvents();
@@ -294,11 +249,6 @@ export default function App() {
 
   const handleCloseEditor = async () => {
     if (!editor || isSaving) {
-      return;
-    }
-
-    if (editor.mode === 'create' || !editor.eventId || !editor.originalDraft) {
-      setEditor(null);
       return;
     }
 
@@ -467,9 +417,6 @@ export default function App() {
             firstDay={0}
             allDaySlot
             nowIndicator
-            selectable={!isCalendarOnly && canLoadEvents}
-            selectMirror
-            unselectAuto={false}
             datesAboveResources
             resources={resources}
             resourceOrder="displayOrder"
@@ -489,7 +436,6 @@ export default function App() {
               today: '今日',
             }}
             datesSet={handleDatesSet}
-            select={isCalendarOnly ? undefined : handleSelect}
             eventClick={handleEventClick}
             eventDrop={(arg) => void handleDirectEventChange(arg)}
             eventResize={(arg) => void handleDirectEventChange(arg)}
@@ -525,7 +471,6 @@ function EventPopover(props: {
 }) {
   const { editor, isSaving, onClose } = props;
   const popoverRef = useRef<HTMLDivElement>(null);
-  const isCreate = editor.mode === 'create';
   const popoverStyle = {
     left: `${Math.min(editor.anchor.x, window.innerWidth - 360)}px`,
     top: `${Math.min(editor.anchor.y, window.innerHeight - 460)}px`,
@@ -555,16 +500,14 @@ function EventPopover(props: {
         <div className="popover-header">
           <span className={`role-chip role-${editor.role}`}>{getRoleLabel(editor.role)}</span>
           <div className="popover-header-actions">
-            {!isCreate && editor.htmlLink && (
+            {editor.htmlLink && (
               <a className="mini-action" href={editor.htmlLink} target="_blank" rel="noreferrer">
                 Googleで開く
               </a>
             )}
-            {!isCreate && (
-              <button type="button" className="mini-action danger" disabled={props.isSaving} onClick={props.onDelete}>
-                削除
-              </button>
-            )}
+            <button type="button" className="mini-action danger" disabled={props.isSaving} onClick={props.onDelete}>
+              削除
+            </button>
             <button type="button" className="icon-button" aria-label="閉じる" disabled={props.isSaving} onClick={props.onClose}>
               ×
             </button>
@@ -574,23 +517,10 @@ function EventPopover(props: {
         <EventFormFields editor={editor} onDraftChange={props.onDraftChange} />
 
         <div className="popover-actions">
-          {isCreate ? (
-            <>
-              <button type="button" className="secondary" disabled={props.isSaving} onClick={props.onCancel}>
-                キャンセル
-              </button>
-              <button type="submit" disabled={!editor.draft.title.trim() || props.isSaving}>
-                保存
-              </button>
-            </>
-          ) : (
-            <>
-              <span className="autosave-hint">{props.isSaving ? '保存中...' : '閉じると保存されます'}</span>
-              <button type="button" className="secondary" disabled={props.isSaving} onClick={props.onCancel}>
-                キャンセル
-              </button>
-            </>
-          )}
+          <span className="autosave-hint">{props.isSaving ? '保存中...' : '閉じると保存されます'}</span>
+          <button type="button" className="secondary" disabled={props.isSaving} onClick={props.onCancel}>
+            キャンセル
+          </button>
         </div>
       </form>
     </div>
@@ -705,15 +635,6 @@ function CalendarSelect(props: {
       </select>
     </label>
   );
-}
-
-function getResourceId(resource: DateSelectArg['resource']): CalendarRole | null {
-  const id = (resource as { id?: string } | undefined)?.id;
-  return id === 'planned' || id === 'actual' ? id : null;
-}
-
-function getCalendarIdForRole(role: CalendarRole, settings: AppSettings) {
-  return role === 'planned' ? settings.plannedCalendarId : settings.actualCalendarId;
 }
 
 function getRoleLabel(role: CalendarRole) {

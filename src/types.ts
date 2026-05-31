@@ -50,24 +50,18 @@ export type EventDraft = {
   description: string;
 };
 
-export type EventEditorMode = 'edit' | 'create';
+export type EventEditorMode = 'edit';
 
 export type EventEditorState = {
   mode: EventEditorMode;
   calendarId: string;
   role: CalendarRole;
-  eventId?: string;
+  eventId: string;
   htmlLink?: string;
   anchor: {
     x: number;
     y: number;
   };
   draft: EventDraft;
-  originalDraft?: EventDraft;
-};
-
-export type PendingSelection = {
-  start: Date;
-  end: Date;
-  allDay: boolean;
+  originalDraft: EventDraft;
 };
