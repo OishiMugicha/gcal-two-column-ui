@@ -9,6 +9,19 @@ export function sendError(res, status, message) {
 }
 
 export async function readJson(req) {
+  if (req.body !== undefined) {
+    if (Buffer.isBuffer(req.body)) {
+      const rawBody = req.body.toString('utf8');
+      return rawBody ? JSON.parse(rawBody) : {};
+    }
+
+    if (typeof req.body === 'string') {
+      return req.body ? JSON.parse(req.body) : {};
+    }
+
+    return req.body;
+  }
+
   const chunks = [];
 
   for await (const chunk of req) {
