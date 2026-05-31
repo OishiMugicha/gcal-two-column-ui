@@ -125,11 +125,12 @@ async function apiFetch<T = unknown>(url: string, init: RequestInit = {}): Promi
 
   if (!response.ok) {
     let message = '';
+    const text = await response.text();
     try {
-      const data = (await response.json()) as { error?: string };
+      const data = text ? (JSON.parse(text) as { error?: string }) : {};
       message = data.error || '';
     } catch {
-      message = await response.text();
+      message = text;
     }
 
     if (response.status === 401) {

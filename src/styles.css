@@ -334,6 +334,14 @@ textarea {
   border-color: #1d6f8a;
 }
 
+.field-error {
+  color: #a33a1d;
+  font-size: 13px;
+  line-height: 1.4;
+  margin: -4px 0 0;
+  overflow-wrap: anywhere;
+}
+
 .checkbox-row {
   align-items: center;
   flex-direction: row;
@@ -381,7 +389,7 @@ button.danger {
   color: #8a2d14;
 }
 
-.autosave-hint {
+.save-status {
   color: #6a777d;
   font-size: 12px;
   margin-right: auto;

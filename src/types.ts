@@ -50,18 +50,27 @@ export type EventDraft = {
   description: string;
 };
 
-export type EventEditorMode = 'edit';
+export type EventEditorMode = 'create' | 'edit';
 
-export type EventEditorState = {
+type EventEditorBaseState = {
   mode: EventEditorMode;
   calendarId: string;
   role: CalendarRole;
-  eventId: string;
-  htmlLink?: string;
   anchor: {
     x: number;
     y: number;
   };
   draft: EventDraft;
-  originalDraft: EventDraft;
 };
+
+export type EventCreateEditorState = EventEditorBaseState & {
+  mode: 'create';
+};
+
+export type EventEditEditorState = EventEditorBaseState & {
+  mode: 'edit';
+  eventId: string;
+  htmlLink?: string;
+};
+
+export type EventEditorState = EventCreateEditorState | EventEditEditorState;
