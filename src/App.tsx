@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
-import interactionPlugin, { type EventResizeDoneArg } from '@fullcalendar/interaction';
+import interactionPlugin, { type DateClickArg, type EventResizeDoneArg } from '@fullcalendar/interaction';
 import resourceTimeGridPlugin from '@fullcalendar/resource-timegrid';
 import type {
   DatesSetArg,
@@ -11,6 +11,7 @@ import type {
   EventInput,
 } from '@fullcalendar/core';
 import {
+  createEvent,
   deleteEvent,
   getSession,
   listCalendars,
@@ -191,6 +192,36 @@ export default function App() {
     });
   };
 
+  const handleDateClick = (arg: DateClickArg) => {
+    if (arg.jsEvent.detail !== 2 || arg.allDay || isCalendarOnly || !canLoadEvents || isSaving) {
+      return;
+    }
+
+    const role = arg.resource?.id as CalendarRole | undefined;
+    if (role !== 'planned' && role !== 'actual') {
+      return;
+    }
+
+    const calendarId = role === 'planned' ? settings.plannedCalendarId : settings.actualCalendarId;
+    if (!calendarId) {
+      return;
+    }
+
+    setEditor({
+      mode: 'create',
+      calendarId,
+      role,
+      anchor: toAnchor(arg.jsEvent),
+      draft: normalizeDraft({
+        title: '',
+        start: arg.date,
+        end: addMinutes(arg.date, 30),
+        allDay: false,
+        description: '',
+      }),
+    });
+  };
+
   const handleSaveEditor = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -211,8 +242,13 @@ export default function App() {
     setError('');
 
     try {
-      await updateEvent(editor.calendarId, editor.eventId, draft);
-      setMessage('イベントを更新しました。');
+      if (editor.mode === 'create') {
+        await createEvent(editor.calendarId, draft);
+        setMessage('イベントを作成しました。');
+      } else {
+        await updateEvent(editor.calendarId, editor.eventId, draft);
+        setMessage('イベントを更新しました。');
+      }
 
       setEditor(null);
       await refreshEvents();
@@ -224,7 +260,7 @@ export default function App() {
   };
 
   const handleDeleteEditor = async () => {
-    if (!editor?.eventId || isSaving) {
+    if (!editor || editor.mode !== 'edit' || isSaving) {
       return;
     }
 
@@ -257,7 +293,7 @@ export default function App() {
       title: editor.draft.title.trim() ? editor.draft.title : '無題',
     });
 
-    if (areDraftsEqual(draft, normalizeDraft(editor.originalDraft))) {
+    if (editor.mode === 'edit' && areDraftsEqual(draft, normalizeDraft(editor.originalDraft))) {
       setEditor(null);
       return;
     }
@@ -266,9 +302,14 @@ export default function App() {
     setError('');
 
     try {
-      await updateEvent(editor.calendarId, editor.eventId, draft);
+      if (editor.mode === 'create') {
+        await createEvent(editor.calendarId, draft);
+        setMessage('イベントを作成しました。');
+      } else {
+        await updateEvent(editor.calendarId, editor.eventId, draft);
+        setMessage('イベントを更新しました。');
+      }
       setEditor(null);
-      setMessage('イベントを更新しました。');
       await refreshEvents();
     } catch (err) {
       setError(toErrorMessage(err));
@@ -436,6 +477,7 @@ export default function App() {
               today: '今日',
             }}
             datesSet={handleDatesSet}
+            dateClick={handleDateClick}
             eventClick={handleEventClick}
             eventDrop={(arg) => void handleDirectEventChange(arg)}
             eventResize={(arg) => void handleDirectEventChange(arg)}
@@ -500,14 +542,16 @@ function EventPopover(props: {
         <div className="popover-header">
           <span className={`role-chip role-${editor.role}`}>{getRoleLabel(editor.role)}</span>
           <div className="popover-header-actions">
-            {editor.htmlLink && (
+            {editor.mode === 'edit' && editor.htmlLink && (
               <a className="mini-action" href={editor.htmlLink} target="_blank" rel="noreferrer">
                 Googleで開く
               </a>
             )}
-            <button type="button" className="mini-action danger" disabled={props.isSaving} onClick={props.onDelete}>
-              削除
-            </button>
+            {editor.mode === 'edit' && (
+              <button type="button" className="mini-action danger" disabled={props.isSaving} onClick={props.onDelete}>
+                削除
+              </button>
+            )}
             <button type="button" className="icon-button" aria-label="閉じる" disabled={props.isSaving} onClick={props.onClose}>
               ×
             </button>
@@ -517,7 +561,9 @@ function EventPopover(props: {
         <EventFormFields editor={editor} onDraftChange={props.onDraftChange} />
 
         <div className="popover-actions">
-          <span className="autosave-hint">{props.isSaving ? '保存中...' : '閉じると保存されます'}</span>
+          <span className="autosave-hint">
+            {props.isSaving ? '保存中...' : editor.mode === 'create' ? '閉じると作成されます' : '閉じると保存されます'}
+          </span>
           <button type="button" className="secondary" disabled={props.isSaving} onClick={props.onCancel}>
             キャンセル
           </button>
