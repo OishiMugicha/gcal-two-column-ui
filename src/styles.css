@@ -334,6 +334,14 @@ textarea {
   border-color: #1d6f8a;
 }
 
+.field-error {
+  color: #a33a1d;
+  font-size: 13px;
+  line-height: 1.4;
+  margin: -4px 0 0;
+  overflow-wrap: anywhere;
+}
+
 .checkbox-row {
   align-items: center;
   flex-direction: row;

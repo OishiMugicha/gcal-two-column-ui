@@ -45,6 +45,7 @@ export default function App() {
   const [isCalendarOnly, setIsCalendarOnly] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [editorError, setEditorError] = useState('');
 
   const canLoadEvents = Boolean(settings.plannedCalendarId && settings.actualCalendarId && isSignedIn);
 
@@ -144,6 +145,7 @@ export default function App() {
         setCalendars([]);
         setEvents([]);
         setEditor(null);
+        setEditorError('');
         setMessage('ログアウトしました。');
         return;
       }
@@ -161,6 +163,7 @@ export default function App() {
     setSettings(nextSettings);
     saveSettings(nextSettings);
     setEditor(null);
+    setEditorError('');
   };
 
   const handleDatesSet = (arg: DatesSetArg) => {
@@ -183,6 +186,7 @@ export default function App() {
 
     const draft = draftFromEvent(arg.event);
 
+    setEditorError('');
     setEditor({
       mode: 'edit',
       ...identity,
@@ -206,6 +210,7 @@ export default function App() {
       return;
     }
 
+    setEditorError('');
     setEditor({
       mode: 'create',
       calendarId,
@@ -230,15 +235,16 @@ export default function App() {
 
     const draft = normalizeDraft({
       ...editor.draft,
-      title: editor.draft.title.trim() ? editor.draft.title : '無題',
+      title: editor.draft.title,
     });
     if (!draft.title.trim()) {
-      setError('タイトルを入力してください。');
+      setEditorError('タイトルを入力してください。');
       return;
     }
 
     setIsSaving(true);
     setError('');
+    setEditorError('');
 
     try {
       if (editor.mode === 'create') {
@@ -250,9 +256,10 @@ export default function App() {
       }
 
       setEditor(null);
+      setEditorError('');
       await refreshEvents();
     } catch (err) {
-      setError(toErrorMessage(err));
+      setEditorError(toErrorMessage(err));
     } finally {
       setIsSaving(false);
     }
@@ -269,10 +276,12 @@ export default function App() {
 
     setIsSaving(true);
     setError('');
+    setEditorError('');
 
     try {
       await deleteEvent(editor.calendarId, editor.eventId);
       setEditor(null);
+      setEditorError('');
       setMessage('イベントを削除しました。');
       await refreshEvents();
     } catch (err) {
@@ -288,6 +297,7 @@ export default function App() {
     }
 
     setEditor(null);
+    setEditorError('');
   };
 
   const handleCancelEditor = () => {
@@ -296,6 +306,7 @@ export default function App() {
     }
 
     setEditor(null);
+    setEditorError('');
   };
 
   const handleDirectEventChange = async (arg: EventDropArg | EventResizeDoneArg) => {
@@ -315,6 +326,7 @@ export default function App() {
       await updateEvent(identity.calendarId, identity.eventId, draft);
       setMessage('イベントの日時を更新しました。');
       setEditor(null);
+      setEditorError('');
     } catch (err) {
       arg.revert();
       setError(toErrorMessage(err));
@@ -325,6 +337,7 @@ export default function App() {
 
   const updateEditorDraft = (nextDraft: EventDraft) => {
     setEditor((current) => (current ? { ...current, draft: normalizeDraft(nextDraft) } : current));
+    setEditorError('');
   };
 
   return (
@@ -462,6 +475,7 @@ export default function App() {
       {editor && (
         <EventPopover
           editor={editor}
+          error={editorError}
           isSaving={isSaving}
           onClose={handleCloseEditor}
           onCancel={handleCancelEditor}
@@ -476,6 +490,7 @@ export default function App() {
 
 function EventPopover(props: {
   editor: EventEditorState;
+  error: string;
   isSaving: boolean;
   onClose: () => void;
   onCancel: () => void;
@@ -511,7 +526,7 @@ function EventPopover(props: {
           </div>
         </div>
 
-        <EventFormFields editor={editor} onDraftChange={props.onDraftChange} />
+        <EventFormFields editor={editor} error={props.error} onDraftChange={props.onDraftChange} />
 
         <div className="popover-actions">
           {props.isSaving && <span className="save-status">保存中...</span>}
@@ -527,7 +542,7 @@ function EventPopover(props: {
   );
 }
 
-function EventFormFields(props: { editor: EventEditorState; onDraftChange: (draft: EventDraft) => void }) {
+function EventFormFields(props: { editor: EventEditorState; error: string; onDraftChange: (draft: EventDraft) => void }) {
   const { draft } = props.editor;
 
   return (
@@ -538,7 +553,14 @@ function EventFormFields(props: { editor: EventEditorState; onDraftChange: (draf
         value={draft.title}
         onChange={(event) => props.onDraftChange({ ...draft, title: event.currentTarget.value })}
         placeholder="タイトルを追加"
+        aria-invalid={Boolean(props.error)}
+        aria-describedby={props.error ? 'event-title-error' : undefined}
       />
+      {props.error && (
+        <p className="field-error" id="event-title-error">
+          {props.error}
+        </p>
+      )}
       <label className="checkbox-row">
         <input
           type="checkbox"
