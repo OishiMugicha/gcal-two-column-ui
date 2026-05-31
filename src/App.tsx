@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import interactionPlugin, { type DateClickArg, type EventResizeDoneArg } from '@fullcalendar/interaction';
 import resourceTimeGridPlugin from '@fullcalendar/resource-timegrid';
@@ -188,7 +188,6 @@ export default function App() {
       ...identity,
       anchor: toAnchor(arg.jsEvent),
       draft,
-      originalDraft: draft,
     });
   };
 
@@ -283,39 +282,12 @@ export default function App() {
     }
   };
 
-  const handleCloseEditor = async () => {
+  const handleCloseEditor = () => {
     if (!editor || isSaving) {
       return;
     }
 
-    const draft = normalizeDraft({
-      ...editor.draft,
-      title: editor.draft.title.trim() ? editor.draft.title : '無題',
-    });
-
-    if (editor.mode === 'edit' && areDraftsEqual(draft, normalizeDraft(editor.originalDraft))) {
-      setEditor(null);
-      return;
-    }
-
-    setIsSaving(true);
-    setError('');
-
-    try {
-      if (editor.mode === 'create') {
-        await createEvent(editor.calendarId, draft);
-        setMessage('イベントを作成しました。');
-      } else {
-        await updateEvent(editor.calendarId, editor.eventId, draft);
-        setMessage('イベントを更新しました。');
-      }
-      setEditor(null);
-      await refreshEvents();
-    } catch (err) {
-      setError(toErrorMessage(err));
-    } finally {
-      setIsSaving(false);
-    }
+    setEditor(null);
   };
 
   const handleCancelEditor = () => {
@@ -491,7 +463,7 @@ export default function App() {
         <EventPopover
           editor={editor}
           isSaving={isSaving}
-          onClose={() => void handleCloseEditor()}
+          onClose={handleCloseEditor}
           onCancel={handleCancelEditor}
           onDelete={() => void handleDeleteEditor()}
           onDraftChange={updateEditorDraft}
@@ -511,33 +483,14 @@ function EventPopover(props: {
   onDraftChange: (draft: EventDraft) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
-  const { editor, isSaving, onClose } = props;
-  const popoverRef = useRef<HTMLDivElement>(null);
+  const { editor } = props;
   const popoverStyle = {
     left: `${Math.min(editor.anchor.x, window.innerWidth - 360)}px`,
     top: `${Math.min(editor.anchor.y, window.innerHeight - 460)}px`,
   };
 
-  useEffect(() => {
-    const handlePointerDown = (event: PointerEvent) => {
-      if (isSaving) {
-        return;
-      }
-
-      const target = event.target;
-      if (!(target instanceof Node) || popoverRef.current?.contains(target)) {
-        return;
-      }
-
-      onClose();
-    };
-
-    document.addEventListener('pointerdown', handlePointerDown);
-    return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, [isSaving, onClose]);
-
   return (
-    <div ref={popoverRef} className="event-popover" style={popoverStyle}>
+    <div className="event-popover" style={popoverStyle}>
       <form onSubmit={props.onSubmit}>
         <div className="popover-header">
           <span className={`role-chip role-${editor.role}`}>{getRoleLabel(editor.role)}</span>
@@ -561,11 +514,12 @@ function EventPopover(props: {
         <EventFormFields editor={editor} onDraftChange={props.onDraftChange} />
 
         <div className="popover-actions">
-          <span className="autosave-hint">
-            {props.isSaving ? '保存中...' : editor.mode === 'create' ? '閉じると作成されます' : '閉じると保存されます'}
-          </span>
+          {props.isSaving && <span className="save-status">保存中...</span>}
           <button type="button" className="secondary" disabled={props.isSaving} onClick={props.onCancel}>
             キャンセル
+          </button>
+          <button type="submit" disabled={props.isSaving}>
+            保存
           </button>
         </div>
       </form>
@@ -733,16 +687,6 @@ function normalizeDraft(draft: EventDraft): EventDraft {
     allDay: draft.allDay,
     description: draft.description,
   };
-}
-
-function areDraftsEqual(left: EventDraft, right: EventDraft) {
-  return (
-    left.title === right.title &&
-    left.start.getTime() === right.start.getTime() &&
-    left.end.getTime() === right.end.getTime() &&
-    left.allDay === right.allDay &&
-    left.description === right.description
-  );
 }
 
 function renderEventContent(arg: EventContentArg) {

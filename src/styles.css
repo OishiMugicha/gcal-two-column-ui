@@ -381,7 +381,7 @@ button.danger {
   color: #8a2d14;
 }
 
-.autosave-hint {
+.save-status {
   color: #6a777d;
   font-size: 12px;
   margin-right: auto;

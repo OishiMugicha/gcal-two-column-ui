@@ -71,7 +71,6 @@ export type EventEditEditorState = EventEditorBaseState & {
   mode: 'edit';
   eventId: string;
   htmlLink?: string;
-  originalDraft: EventDraft;
 };
 
 export type EventEditorState = EventCreateEditorState | EventEditEditorState;
